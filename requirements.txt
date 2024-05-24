@@ -1,0 +1,6 @@
+bcrypt
+flask
+flask-restful
+flask-httpauth
+tinydb
+flask-jwt-extended
