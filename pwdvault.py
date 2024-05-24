@@ -26,7 +26,10 @@ with open('authpwd.txt', 'r') as f:
 app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
 
 app.config["JWT_COOKIE_CSRF_PROTECT"] = False
-app.config["JWT_COOKIE_SECURE"] = False # allow http
+app.config["JWT_COOKIE_SECURE"] = True
+app.config["JWT_COOKIE_SAMESITE"] = "None"
+
+
 
 jwt = JWTManager(app)
 
@@ -41,6 +44,11 @@ def login(username, password):
         return res, 200
     else:
         return jsonify({"msg":"Invalid username or password"}), 401
+
+@app.route('/checkAuth', methods=['GET'], endpoint='check_if_authed')
+@jwt_required()
+def check_if_auth():
+    return jsonify({"msg":"You are authenticated"}), 200
 
 @app.after_request
 def refresh(res):
@@ -103,7 +111,7 @@ class Passwords(Resource):
 # Endpoints for user management
 class User(Resource):
     # Create a new user
-    @app.route('/user/<string:username>', methods=['POST'], endpoint='register_user')
+    @app.route('/user/<string:username>', methods=['PUT'], endpoint='register_user')
     def post(username):
         # Parse the password from the request
         parser = reqparse.RequestParser()
@@ -119,7 +127,7 @@ class User(Resource):
         else:   
             return jsonify({"msg":"User already exists"}), 200
         
-    @app.route('/user/<string:username>', methods=['GET'], endpoint='login_user')
+    @app.route('/user/<string:username>', methods=['POST'], endpoint='login_user')
     def get(username):
         # Parse the password from the request
         parser = reqparse.RequestParser()
