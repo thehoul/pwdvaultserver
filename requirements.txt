@@ -4,3 +4,4 @@ flask-restful
 flask-httpauth
 tinydb
 flask-jwt-extended
+gunicorn
