@@ -1,3 +1,7 @@
+from datetime import datetime
+from datetime import timedelta
+from datetime import timezone
+
 from flask import Flask, make_response
 from flask_restful import Api, Resource, reqparse, abort
 from flask import jsonify
@@ -6,26 +10,58 @@ from pwdmanager import get_password, add_db_entry, del_db_entry, add_db_user, de
 
 from flask_jwt_extended import JWTManager
 from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_refresh_token
 from flask_jwt_extended import jwt_required
 from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import set_access_cookies
+from flask_jwt_extended import get_jwt
+from flask_jwt_extended import set_refresh_cookies, unset_jwt_cookies
+
 
 app = Flask(__name__)
 
-app.config["JWT_SECRET_KEY"] = "terhuefbz"
+with open('authpwd.txt', 'r') as f:
+    app.config["JWT_SECRET_KEY"] = f.read().strip()
+
 app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
+
 app.config["JWT_COOKIE_CSRF_PROTECT"] = False
+app.config["JWT_COOKIE_SECURE"] = False # allow http
 
 jwt = JWTManager(app)
 
 def login(username, password):
     if(verify_password(username, password)):
         access_token = create_access_token(identity=username)
+        refresh_token = create_refresh_token(identity=username)
+
         res = make_response(jsonify({"msg":"Login successful"}), 200)
-        res.set_cookie('access_token_cookie', access_token)
-        return res
+        set_access_cookies(res, access_token)
+        set_refresh_cookies(res, refresh_token)
+        return res, 200
     else:
         return jsonify({"msg":"Invalid username or password"}), 401
 
+@app.after_request
+def refresh(res):
+    try:
+        # Refresh the access token if it is about to expire (< 5 minutes left)
+        exp = get_jwt()["exp"]
+        now = datetime.now(timezone.utc)
+        target = datetime.timestamp(now + timedelta(minutes=5))
+        if target > exp:
+            current_user = get_jwt_identity()
+            access_token = create_access_token(identity=current_user)
+            set_access_cookies(res, access_token)
+        return res
+    except (RuntimeError, KeyError):
+        return res
+
+@app.route('/logout', methods=['POST'], endpoint='logout_user')
+def logout():
+    res = make_response(jsonify({"msg":"Logout successful"}), 200)
+    unset_jwt_cookies(res)
+    return res
 
 # Endpoints for password management
 class Passwords(Resource):
@@ -107,4 +143,4 @@ class User(Resource):
         return del_db_user(username)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, ssl_context=('cert.pem', 'key.pem'))
