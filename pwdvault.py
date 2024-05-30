@@ -2,11 +2,12 @@ from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
 
+from authentication.authenticate import Authenticator
+from database.dbmanager import DbManager
+
 from flask import Flask, make_response
-from flask_restful import Api, Resource, reqparse, abort
+from flask_restful import Api, Resource, reqparse
 from flask import jsonify
-from auth import auth, add_auth, remove_auth, verify_password
-from pwdmanager import get_password, add_db_entry, del_db_entry, add_db_user, del_db_user
 
 from flask_jwt_extended import JWTManager
 from flask_jwt_extended import create_access_token
@@ -29,12 +30,13 @@ app.config["JWT_COOKIE_CSRF_PROTECT"] = False
 app.config["JWT_COOKIE_SECURE"] = True
 app.config["JWT_COOKIE_SAMESITE"] = "None"
 
-
+db = DbManager()
+authenticator = Authenticator(db)
 
 jwt = JWTManager(app)
 
 def login(username, password):
-    if(verify_password(username, password)):
+    if authenticator.authenticate(username, password):
         access_token = create_access_token(identity=username)
         refresh_token = create_refresh_token(identity=username)
 
@@ -73,82 +75,87 @@ def logout():
 
 # Endpoints for password management
 class Passwords(Resource):
-    @app.route('/passwords/<string:username>/<string:website>', methods=['GET'], endpoint='get_password')
-    @jwt_required()
-    def get(username, website):
-        identity = get_jwt_identity()
-        if identity != username:
-            return jsonify({"msg":"You are not authorized to view this user's passwords"}), 403
 
-        return get_password(username, website)
+    website_parser = reqparse.RequestParser()
+    website_parser.add_argument('website', required=True, help="Website cannot be blank")
+
+    website_password_parser = website_parser.copy()
+    website_password_parser.add_argument('password', required=True, help="Password cannot be blank")
+
+    @app.route('/getPassword/<string:website>', methods=['GET'], endpoint='get_password')
+    @jwt_required()
+    def get(website):
+        username = get_jwt_identity()
+        pwd = db.get_password(username, website)
+        if pwd:
+            return jsonify({"password":pwd}), 200
+        else:
+            return jsonify({"msg":db.message}), 404
     
-    @app.route('/passwords/<string:username>/<string:website>', methods=['POST'], endpoint='add_password')
+    @app.route('/setPassword', methods=['POST'], endpoint='add_password')
     @jwt_required()
-    def post(username, website):
-        identity = get_jwt_identity()
-        if identity != username:
-            return jsonify({"msg":"You are not authorized to view this user's passwords"}), 403
+    def post():
+        username = get_jwt_identity()
+        args = Passwords.website_password_parser.parse_args()
 
-        parser = reqparse.RequestParser()
-        parser.add_argument('password', required=True, help="Password cannot be blank")
-        args = parser.parse_args()
+        if db.add_password(username, args['website'], args['password']):
+            return jsonify({"msg":"Password added"}), 200
+        else:
+            return jsonify({"msg":db.message}), 400
+        
 
-        return add_db_entry(username, website, args['password'])
+        return db.add_password(username, args['website'], args['password'])
     
-    @app.route('/passwords/<string:username>/<string:website>', methods=['DELETE'], endpoint='delete_password')
+    @app.route('/deletePassword', methods=['DELETE'], endpoint='delete_password')
     @jwt_required()
-    def delete(username, website):
-        identity = get_jwt_identity()
-        if identity != username:
-            return jsonify({"msg":"You are not authorized to view this user's passwords"}), 403
+    def delete():
+        username = get_jwt_identity()
+        args = Passwords.website_parser.parse_args()
 
-        parser = reqparse.RequestParser()
-        parser.add_argument('password', required=True, help="Password cannot be blank")
-        args = parser.parse_args()
-
-        return del_db_entry(username, website, args['password'])
+        if db.delete_password(username, args['website']):
+            return jsonify({"msg":"Password deleted"}), 200
+        else:
+            return jsonify({"msg":db.message}), 404
 
 # Endpoints for user management
 class User(Resource):
+
+    name_pwd_parser = reqparse.RequestParser()
+    name_pwd_parser.add_argument('username', required=True, help="Username cannot be blank")
+    name_pwd_parser.add_argument('password', required=True, help="Password cannot be blank")
+
+    full_Parser = name_pwd_parser.copy()
+    full_Parser.add_argument('email', required=True, help="Email cannot be blank")
+
     # Create a new user
-    @app.route('/user/<string:username>', methods=['PUT'], endpoint='register_user')
-    def post(username):
+    @app.route('/createUser', methods=['PUT'], endpoint='register_user')
+    def put():
         # Parse the password from the request
-        parser = reqparse.RequestParser()
-        parser.add_argument('password', required=True, help="Password cannot be blank")
-        args = parser.parse_args()
+        args = User.full_Parser.parse_args()
 
         # Try to add the user to the auth database
-        if add_auth(username, args['password']):
-            # Add the user to the data database
-            add_db_user(username)
-            # Create a JWT token and return it
-            return login(username, args['password'])
+        if authenticator.register(args['username'], args['email'], args['password']):
+            return login(args['username'], args['password'])
         else:   
-            return jsonify({"msg":"User already exists"}), 200
+            return jsonify({"msg":db.message}), 200
         
-    @app.route('/user/<string:username>', methods=['POST'], endpoint='login_user')
-    def get(username):
+    # Login a user
+    @app.route('/login', methods=['POST'], endpoint='login_user')
+    def get():
         # Parse the password from the request
-        parser = reqparse.RequestParser()
-        parser.add_argument('password', required=True, help="Password cannot be blank")
-        args = parser.parse_args()
+        args = User.name_pwd_parser.parse_args()
 
-        return login(username, args['password'])
+        return login(args['username'], args['password'])
         
     # Delete a user
-    @app.route('/user/<string:username>', methods=['DELETE'], endpoint='delete_user')
+    @app.route('/deleteUser', methods=['DELETE'], endpoint='delete_user')
     @jwt_required()
-    def delete(username):
-        # Check if the user exists
-        current_user = get_jwt_identity()
-        if(current_user != username):
-            return jsonify({"msg":"You are not authorized to delete this user"}), 403
-        
-        if not remove_auth(username):
+    def delete():
+        username = get_jwt_identity()        
+        if authenticator.unregister(username):
+            return jsonify({"msg":"User removed"}), 200
+        else:
             return jsonify({"msg":"User not found"}), 404
-        
-        return del_db_user(username)
 
 if __name__ == "__main__":
-    app.run(debug=True, ssl_context=('cert.pem', 'key.pem'))
+    app.run(threaded=True, debug=True, ssl_context=('cert.pem', 'key.pem'))
