@@ -20,7 +20,7 @@ get_pwdsalt_script = '''
 delete_person_script = '''
     DELETE 
     FROM person
-    WHERE username = \"{}\";
+    WHERE userid = \"{}\";
 '''
 # ---------- PASSWORD MANAGEMENT ----------
 get_website_password_script = '''
