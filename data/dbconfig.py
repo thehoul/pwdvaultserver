@@ -1,0 +1,1 @@
+db_file_loc = 'data/database.db'
