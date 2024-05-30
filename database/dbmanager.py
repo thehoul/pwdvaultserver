@@ -116,8 +116,11 @@ class DbManager:
             # message is set in get_password
             return False
         try:
+            userid = self.getUserID(username)
+            if not userid:
+                return False
             self.cursor.execute(
-                delete_website_password_script.format(username, website))
+                delete_website_password_script.format(userid, website))
             self.message = 'Password deleted'
             self.commit()
             return True

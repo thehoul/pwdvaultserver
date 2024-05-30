@@ -42,11 +42,7 @@ update_website_password_script = '''
 delete_website_password_script = '''
     DELETE 
     FROM vault 
-    WHERE userid = (
-        SELECT userid
-        FROM person
-        WHERE username = \"{}\"
-    )
+    WHERE userid = \"{}\" AND website = \"{}\";
 '''
 
 create_table_script = '''
