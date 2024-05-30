@@ -1,9 +1,11 @@
 import sqlite3
 import bcrypt
-from scripts import *
-from dbconfig import *
+from database.scripts import *
+from database.dbconfig import *
 
 class DbManager:
+
+    message = ""
 
     def __init__(self):
         self.con = self.connect()
@@ -23,13 +25,11 @@ class DbManager:
 
     # Returns the hash of the password and the salt -> (hash, salt)
     def get_login(self, username):
-        res = self.cursor.execute(get_userid_script.format(username))
-        userid = res.fetchone()
+        userid = self.getUserID(username)
         if not userid:
-            print('User not found')
+            self.message = 'User not found'
             return False
-        print(userid[0])
-        res = self.cursor.execute(get_pwdsalt_script.format(userid[0]))
+        res = self.cursor.execute(get_pwdsalt_script.format(userid))
         return res.fetchone()
 
     # Register a user. Returns True if the user was added, False if the user already exists
@@ -40,39 +40,46 @@ class DbManager:
                 insert_person_script.format(username, email))
             self.cursor.execute(
                 insert_login_script.format(self.cursor.lastrowid, hashpwd, salt))
-            print('User added')
+            self.message = 'User added'
+            self.commit()
             return True
         except sqlite3.IntegrityError:
-            print('User already exists')
+            self.message = 'User already exists'
             return False
 
     # Unregister a user. Returns True if the user was removed, False if the user was not found
     def unregister(self, username):
         # Remove the user from the database
         try:
-            self.cursor.execute(delete_person_script.format(username))
-            print('User removed')
+            userid = self.getUserID(username)
+            if not userid:
+                return False
+            self.cursor.execute(delete_person_script.format(userid))
+            self.message = 'User removed'
+            self.commit()
             return True
         except sqlite3.IntegrityError:
-            print('User not found')
+            self.message = 'User not found'
             return False
         
     # --- PASSWORD MANAGEMENT ---
 
     # Add a password to the vault. Returns True if the password was added, False if the user was not found
     def add_password(self, username, website, hashpwd):
+        if self.get_password(username, website):
+            self.message = 'Password already exists, try updating it instead'
+            return False
         try:
-            res = self.cursor.execute(get_userid_script.format(username))
-            userid = res.fetchone()
+            userid = self.getUserID(username)
             if not userid:
-                print('User not found')
                 return False
             self.cursor.execute(
-                insert_website_password_script.format(userid[0], website, hashpwd))
-            print('Password added')
+                insert_website_password_script.format(userid, website, hashpwd))
+            self.message = 'Password added'
+            self.commit()
             return True
         except sqlite3.IntegrityError:
-            print('User not found')
+            self.message = 'User not found'
             return False
 
     # Get a password from the vault. Returns the password if it was found, False if the user was not found
@@ -80,56 +87,59 @@ class DbManager:
         try:
             res = self.cursor.execute(get_website_password_script.format(username, website)).fetchone()
             if not res:
-                print('Password not found')
-                return False
+                self.message = 'No password for {}'.format(website)
+                return None
             return res[0]
         except sqlite3.IntegrityError:
-            print('User not found')
-            return False
+            self.message = 'User not found'
+            return None
 
+    # Update a password in the vault. Returns True if the password was updated, False if the user was not found
     def update_password(self, username, website, hashpwd):
         try:
-            res = self.cursor.execute(get_userid_script.format(username))
-            userid = res.fetchone()
+            userid = self.getUserID(username)
             if not userid:
-                print('User not found')
+                self.message = 'User not found'
                 return False
             self.cursor.execute(
-                update_website_password_script.format(hashpwd, userid[0], website))
-            print('Password updated')
+                update_website_password_script.format(hashpwd, userid, website))
+            self.message = 'Password updated'
+            self.commit()
             return True
-        except sqlite3.IntegrityError:
-            print('User not found')
+        except sqlite3.IntegrityError as e: 
+            self.message = 'User not found'
             return False
 
+    # Delete a password from the vault. Returns True if the password was deleted, False if the user was not found
     def delete_password(self, username, website):
+        if not self.get_password(username, website):
+            # message is set in get_password
+            return False
         try:
             self.cursor.execute(
                 delete_website_password_script.format(username, website))
-            print('Password deleted')
+            self.message = 'Password deleted'
+            self.commit()
             return True
         except sqlite3.IntegrityError:
-            print('User not found')
+            self.message = 'User not found'
             return False
+        
 
-    # --- HELPERS ---
+    # --- HELPERs ---
 
-    def getlogins(self):
-        res = self.cursor.execute('''
-            SELECT *
-            FROM login;
-        ''')
-        return res.fetchall()
-    
-    def getusers(self):
-        res = self.cursor.execute('''
-            SELECT *
-            FROM person;
-        ''')
-        return res.fetchall()
+    def getUserID(self, username):
+        res = self.cursor.execute(get_userid_script.format(username))
+        userid = res.fetchone()
+        if not userid:
+            self.message = 'User not found'
+            return None
+        return userid[0]
+        
+    def commit(self):
+        self.con.commit()
 
+    # Close the connection
     def close(self):
         self.con.commit()
-        self.con.close()
-    
-    
+        self.con.close()   
