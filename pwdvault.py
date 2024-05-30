@@ -158,4 +158,4 @@ class User(Resource):
             return jsonify({"msg":"User not found"}), 404
 
 if __name__ == "__main__":
-    app.run(threaded=True, debug=True, ssl_context=('cert.pem', 'key.pem'))
+    app.run(debug=True, ssl_context=('cert.pem', 'key.pem'))
