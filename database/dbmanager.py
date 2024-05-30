@@ -16,7 +16,7 @@ class DbManager:
         self.cursor.executescript(create_table_script)
 
     def connect(self):
-        con = sqlite3.connect(db_file_loc)
+        con = sqlite3.connect(db_file_loc, check_same_thread=False)
         # Activate foreign keys
         con.execute('PRAGMA foreign_keys = ON;')
         return con
