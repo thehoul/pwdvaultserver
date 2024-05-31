@@ -90,9 +90,9 @@ class Passwords(Resource):
         username = get_jwt_identity()
         pwd = db.get_password(username, website)
         if pwd:
-            return jsonify({"password":pwd}), 200
+            return jsonify({"accepted": True, "password":pwd}), 200
         else:
-            return jsonify({"msg":db.message}), 404
+            return jsonify({"accepted": False, "msg":db.message}), 200
     
     @app.route('/setPassword', methods=['POST'], endpoint='add_password')
     @jwt_required()
@@ -101,9 +101,9 @@ class Passwords(Resource):
         args = Passwords.website_password_parser.parse_args()
 
         if db.add_password(username, args['website'], args['password']):
-            return jsonify({"msg":"Password added"}), 200
+            return jsonify({"accepted": True, "msg":"Password added"}), 200
         else:
-            return jsonify({"msg":db.message}), 400
+            return jsonify({"accepted": False, "msg":db.message}), 200
         
 
         return db.add_password(username, args['website'], args['password'])
