@@ -50,7 +50,9 @@ def login(username, password):
 @app.route('/checkAuth', methods=['GET'], endpoint='check_if_authed')
 @jwt_required()
 def check_if_auth():
-    return jsonify({"msg":"You are authenticated"}), 200
+    user = db.get_user_detail(get_jwt_identity())
+    if user:
+        return jsonify({"msg":"You are authenticated", "username":user[0], "email": user[1]}), 200
 
 @app.after_request
 def refresh(res):

@@ -23,6 +23,14 @@ class DbManager:
     
     # --- USER MANAGEMENT ---
 
+    # Get the details of a user. Returns (username, email) if the user was found, None if the user was not found
+    def get_user_detail(self, username):
+        userid = self.getUserID(username)
+        if not userid:
+            return None
+        res = self.cursor.execute(get_user_detail_script.format(userid))
+        return res.fetchone()
+
     # Returns the hash of the password and the salt -> (hash, salt)
     def get_login(self, username):
         userid = self.getUserID(username)

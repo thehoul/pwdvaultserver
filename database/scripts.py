@@ -12,6 +12,11 @@ get_userid_script = '''
     FROM person p
     WHERE p.username = \"{}\";
 '''
+get_user_detail_script = '''
+    SELECT p.username, p.email
+    FROM person p
+    WHERE p.userid = \"{}\";
+'''
 get_pwdsalt_script = '''
     SELECT l.hashpwd, l.salt
     FROM login l
