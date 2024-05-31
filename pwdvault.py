@@ -40,7 +40,9 @@ def login(username, password):
         access_token = create_access_token(identity=username)
         refresh_token = create_refresh_token(identity=username)
 
-        res = make_response(jsonify({"msg":"Login successful"}), 200)
+        user = db.get_user_detail(username)
+
+        res = make_response(jsonify({"msg":"Login successful", "username":user[0], "email": user[1]}), 200)
         set_access_cookies(res, access_token)
         set_refresh_cookies(res, refresh_token)
         return res, 200
