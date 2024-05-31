@@ -118,6 +118,17 @@ class Passwords(Resource):
             return jsonify({"msg":"Password deleted"}), 200
         else:
             return jsonify({"msg":db.message}), 404
+        
+    @app.route('/updatePassword', methods=['PUT'], endpoint='update_password')
+    @jwt_required()
+    def put():
+        username = get_jwt_identity()
+        args = Passwords.website_password_parser.parse_args()
+
+        if db.update_password(username, args['website'], args['password']):
+            return jsonify({"accepted": True, "msg":"Password updated"}), 200
+        else:
+            return jsonify({"accepted": False, "msg":db.message}), 200
 
 # Endpoints for user management
 class User(Resource):
