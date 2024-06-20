@@ -53,7 +53,7 @@ def login(username, password):
     
 def get_ipaddr():
     ipaddr = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
-    return ipaddr
+    return ipaddr.split(',')[0].strip()
     
 def check_ipaddr(ipaddr, username):
     ipaddresses = db.get_ipaddresses(username)
