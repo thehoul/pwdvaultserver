@@ -58,6 +58,13 @@ def check_ipaddr(ipaddr, username):
             return True
     return False
 
+@app.route('/ips', methods=['GET'], endpoint='get_ipaddresses')
+@jwt_required()
+def get_ipaddresses():
+    username = get_jwt_identity()
+    ipaddresses = db.get_ipaddresses(username)
+    return jsonify({"ipaddresses":ipaddresses}), 200
+
 # TODO: Add IP address check to the jwt token check
 @jwt.token_verification_loader
 def checkip(_, jwt_payload):
