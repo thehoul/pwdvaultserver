@@ -176,7 +176,7 @@ class User(Resource):
 
         # Try to add the user to the auth database
         if auth.register(args['username'], args['email'], args['password']):
-            db.register_ipaddress(args['username'], request.remote_addr)
+            db.register_ipaddress(args['username'], "tstest")
             return login(args['username'], args['password'])
         else:   
             return jsonify({"msg":db.message}), 200
@@ -190,7 +190,7 @@ class User(Resource):
         res = login(args['username'], args['password'])
 
         if res[1] == 200:
-            db.register_ipaddress(args['username'], request.remote_addr)
+            db.register_ipaddress(args['username'], "testest")
 
         return res
 
