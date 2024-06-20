@@ -51,6 +51,10 @@ def login(username, password):
     else:
         return jsonify({"msg":"Invalid username or password"}), 401
     
+def get_ipaddr():
+    ipaddr = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
+    return ipaddr
+    
 def check_ipaddr(ipaddr, username):
     ipaddresses = db.get_ipaddresses(username)
     for ip in ipaddresses:
@@ -176,7 +180,7 @@ class User(Resource):
 
         # Try to add the user to the auth database
         if auth.register(args['username'], args['email'], args['password']):
-            db.register_ipaddress(args['username'], request.headers.get('X-Forwarded-For', request.remote_addr))
+            db.register_ipaddress(args['username'], get_ipaddr())
             return login(args['username'], args['password'])
         else:   
             return jsonify({"msg":db.message}), 200
@@ -190,7 +194,7 @@ class User(Resource):
         res = login(args['username'], args['password'])
 
         if res[1] == 200:
-            db.register_ipaddress(args['username'], request.headers.get('X-Forwarded-For', request.remote_addr))
+            db.register_ipaddress(args['username'], get_ipaddr())
 
         return res
 
