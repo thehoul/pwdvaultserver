@@ -59,23 +59,17 @@ def check_ipaddr(ipaddr, username):
     return False
 
 # TODO: Add IP address check to the jwt token check
-def jwt_required_w_ipaddr():
-    def wrapper(fn):
-        @wraps(fn)
-        def decorator(*args, **kwargs):
-            verify_jwt_in_request()
-            ipaddr = request.remote_addr
-            if check_ipaddr(ipaddr, get_jwt_identity()):
-                return fn(*args, **kwargs)
-            else:
-                return jsonify({"msg":"Unauthorized"}), 401
-
-        return decorator
-    return wrapper
-
+@jwt.token_verification_loader
+def checkip(_, jwt_payload):
+    ipaddr = request.remote_addr
+    user = jwt_payload["sub"]
+    if check_ipaddr(ipaddr, user):
+        return True
+    else:
+        return jsonify({"msg":"Unknown IP address"}), 401
 
 @app.route('/checkAuth', methods=['GET'], endpoint='check_if_authed')
-@jwt_required_w_ipaddr()
+@jwt_required()
 def check_if_auth():
     user = db.get_user_detail(get_jwt_identity())
     if user:
@@ -112,7 +106,7 @@ class Passwords(Resource):
     website_password_parser.add_argument('password', required=True, help="Password cannot be blank")
 
     @app.route('/getPassword/<string:website>', methods=['GET'], endpoint='get_password')
-    @jwt_required_w_ipaddr()
+    @jwt_required()
     def get(website):
         username = get_jwt_identity()
         pwd = db.get_password(username, website)
@@ -122,7 +116,7 @@ class Passwords(Resource):
             return jsonify({"accepted": False, "msg":db.message}), 200
     
     @app.route('/setPassword', methods=['POST'], endpoint='add_password')
-    @jwt_required_w_ipaddr()
+    @jwt_required()
     def post():
         username = get_jwt_identity()
         args = Passwords.website_password_parser.parse_args()
@@ -136,7 +130,7 @@ class Passwords(Resource):
         return db.add_password(username, args['website'], args['password'])
     
     @app.route('/deletePassword', methods=['DELETE'], endpoint='delete_password')
-    @jwt_required_w_ipaddr()
+    @jwt_required()
     def delete():
         username = get_jwt_identity()
         args = Passwords.website_parser.parse_args()
@@ -147,7 +141,7 @@ class Passwords(Resource):
             return jsonify({"msg":db.message}), 404
         
     @app.route('/updatePassword', methods=['PUT'], endpoint='update_password')
-    @jwt_required_w_ipaddr()
+    @jwt_required()
     def put():
         username = get_jwt_identity()
         args = Passwords.website_password_parser.parse_args()
@@ -196,7 +190,7 @@ class User(Resource):
         
     # Delete a user
     @app.route('/deleteUser', methods=['DELETE'], endpoint='delete_user')
-    @jwt_required_w_ipaddr()
+    @jwt_required()
     def delete():
         username = get_jwt_identity()        
         if auth.unregister(username):
