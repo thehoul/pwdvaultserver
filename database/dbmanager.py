@@ -7,15 +7,15 @@ class DbManager:
 
     message = ""
 
-    def __init__(self):
-        self.con = self.connect()
+    def __init__(self, db_file_loc=db_file_loc):
+        self.con = self.connect(db_file_loc)
         self.cursor = self.con.cursor()
         self.create_table()
 
     def create_table(self):
         self.cursor.executescript(create_table_script)
 
-    def connect(self):
+    def connect(self, db_file_loc):
         con = sqlite3.connect(db_file_loc, check_same_thread=False)
         # Activate foreign keys
         con.execute('PRAGMA foreign_keys = ON;')
@@ -101,6 +101,35 @@ class DbManager:
         except sqlite3.IntegrityError:
             self.message = 'User not found'
             return None
+
+    # Register an IP address for the given user. Returns True if the IP address was added or alread existed, False if the user was not found
+    def register_ipaddress(self, username, ipaddress):
+        try:
+            userid = self.getUserID(username)
+            if not userid:
+                return False
+
+            ipaddresses = self.get_ipaddresses(username)
+            if ipaddress in ipaddresses:
+                self.message = 'IP address already exists'
+                return True
+
+            self.cursor.execute(
+                insert_ipaddress_script.format(userid, ipaddress))
+            self.message = 'IP address added'
+            self.commit()
+            return True
+        except sqlite3.IntegrityError:
+            self.message = 'User not found'
+            return False
+        
+    # Get all IP addresses for the given user. Returns a list of IP addresses if the user was found, None if the user was not found
+    def get_ipaddresses(self, username):
+        userid = self.getUserID(username)
+        if not userid:
+            return None
+        res = self.cursor.execute(get_ipaddress_script.format(userid))
+        return res.fetchall()
 
     # Update a password in the vault. Returns True if the password was updated, False if the user was not found
     def update_password(self, username, website, hashpwd):

@@ -27,6 +27,15 @@ delete_person_script = '''
     FROM person
     WHERE userid = \"{}\";
 '''
+insert_ipaddress_script = '''
+    INSERT INTO ipaddress (userid, ipaddress)
+    VALUES(\"{}\", \"{}\");
+'''
+get_ipaddress_script = '''
+    SELECT i.ipaddress
+    FROM ipaddress i
+    WHERE i.userid = \"{}\";
+'''
 # ---------- PASSWORD MANAGEMENT ----------
 get_website_password_script = '''
     SELECT v.hashpwd
@@ -67,5 +76,10 @@ create_table_script = '''
         hashpwd VARCHAR(255) NOT NULL,
         FOREIGN KEY(userid) REFERENCES person(userid),
         UNIQUE(userid, website));
+    CREATE TABLE IF NOT EXISTS ipaddress(
+        userid INT NOT NULL, 
+        ipaddress VARCHAR(255) NOT NULL,
+        FOREIGN KEY(userid) REFERENCES person(userid) ON DELETE CASCADE,
+        UNIQUE(userid, ipaddress));
     COMMIT;
 '''
