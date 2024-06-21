@@ -52,7 +52,7 @@ def login(username, password):
         return jsonify({"msg":"Invalid username or password"}), 401
     
 def get_ipaddr():
-    ipaddr = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
+    ipaddr = request.access_route[-1]
     return ipaddr
 
 def check_ipaddr(ipaddr, username):
