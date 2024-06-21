@@ -100,6 +100,44 @@ class DbManager:
         except sqlite3.IntegrityError:
             self.message = 'User not found'
             return None
+        
+    def get_tfa(self, username):
+        userid = self.getUserID(username)
+        if not userid:
+            return False
+        res = self.cursor.execute(get_2fa_bit.format(userid))
+        return res.fetchone()
+        
+    def register_2fa(self, username, secret):
+        try:
+            userid = self.getUserID(username)
+            if not userid:
+                return False
+            if self.get_2fa_secret(username):
+                self.message = '2FA already activated'
+                return True
+            self.cursor.execute(
+                insert_2fa_script.format(userid, secret))
+            self.message = '2FA activated'
+            self.commit()
+            return True
+        except sqlite3.IntegrityError:
+            self.message = 'User not found'
+            return False
+
+    def get_2fa_secret(self, username):
+        try:
+            userid = self.getUserID(username)
+            if not userid:
+                return False
+            res = self.cursor.execute(get_2fa_secret_script.format(userid)).fetchone()
+            if not res:
+                self.message = '2FA not activated'
+                return None
+            return res[0]
+        except sqlite3.IntegrityError:
+            self.message = 'User not found'
+            return None
 
     # Register an IP address for the given user. Returns True if the IP address was added or alread existed, False if the user was not found
     def register_ipaddress(self, username, ipaddress):
@@ -163,7 +201,6 @@ class DbManager:
         except sqlite3.IntegrityError:
             self.message = 'User not found'
             return False
-        
 
     # --- HELPERs ---
 

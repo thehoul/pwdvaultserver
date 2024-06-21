@@ -36,6 +36,16 @@ get_ipaddress_script = '''
     FROM ipaddress i
     WHERE i.userid = \"{}\";
 '''
+# ---------- 2FA MANAGEMENT ----------
+get_2fa_secret_script = '''
+    SELECT l.secret
+    FROM twofa l
+    WHERE l.userid = \"{}\";
+'''
+insert_2fa_script = '''
+    INSERT INTO twofa (userid, secret)
+    VALUES(\"{}\", \"{}\");
+'''
 # ---------- PASSWORD MANAGEMENT ----------
 get_website_password_script = '''
     SELECT v.hashpwd
@@ -81,5 +91,10 @@ create_table_script = '''
         ipaddress VARCHAR(255) NOT NULL,
         FOREIGN KEY(userid) REFERENCES person(userid) ON DELETE CASCADE,
         UNIQUE(userid, ipaddress));
+    CREATE TABLE IF NOT EXISTS twofa(
+        userid INT NOT NULL, 
+        secret VARCHAR(255) NOT NULL,
+        FOREIGN KEY(userid) REFERENCES person(userid) ON DELETE CASCADE,
+        UNIQUE(userid));
     COMMIT;
 '''

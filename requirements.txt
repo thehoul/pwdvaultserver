@@ -5,3 +5,5 @@ flask-httpauth
 tinydb
 flask-jwt-extended
 gunicorn
+pyotp
+qrcode
