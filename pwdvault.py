@@ -8,18 +8,16 @@ from authentication.authenticate import Authenticator
 from database.dbmanager import DbManager
 
 from flask import Flask, make_response
-from flask_restful import Api, Resource, reqparse
+from flask_restful import Resource, reqparse
 from flask import jsonify, request
 
 from flask_jwt_extended import JWTManager
 from flask_jwt_extended import create_access_token
 from flask_jwt_extended import create_refresh_token
-from flask_jwt_extended import jwt_required
 from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import set_access_cookies
 from flask_jwt_extended import get_jwt, verify_jwt_in_request
 from flask_jwt_extended import set_refresh_cookies, unset_jwt_cookies
-
 
 app = Flask(__name__)
 

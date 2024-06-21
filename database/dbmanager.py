@@ -1,5 +1,4 @@
 import sqlite3
-import bcrypt
 from database.scripts import *
 from database.dbconfig import *
 
