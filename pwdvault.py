@@ -63,17 +63,14 @@ def token_ip_required():
                 return jsonify({"msg":"Unknown IP address"}), 401
 
         return decorator
-
     return wrapper
 
 @app.route('/checkAuth', methods=['GET'], endpoint='check_if_authed')
 @token_ip_required() # Only need to have any valid token
 def check_if_auth():
-    user = db.get_user_detail(get_jwt_identity())
+    user = db.get_user(get_jwt_identity())
     if user:
-        claims = get_jwt()
-        tfa_enabled = claims["tfa_enabled"]
-        return make_identity_response("You are authenticated", user[0], user[1], tfa_enabled), 200
+        return make_identity_response("You are authenticated", user), 200
 
 @app.after_request
 def refresh(res):
@@ -170,24 +167,22 @@ class User(Resource):
         if not auth.authenticate(username, password):
             return jsonify({"msg":"Invalid username or password"}), 401
         
-        if not db.get_2fa_secret(username):
-            tfa_enabled=False
-            tfa_verified=False
-        # Check if the user has logged in from this IP address before
-        elif not check_ipaddr(get_ipaddr(), username):
-            # If not require 2fa verification
-            tfa_enabled=True
-            tfa_verified=False
-        else:
-            # Else generate an access token and refresh token with 2fa set to True
-            tfa_enabled=True
-            tfa_verified=True
+        user = db.get_user(username)
+        acc_verified = user[3]
+        tfa_enabled = user[4]
+        tfa_verified = False
+        
+        if(tfa_enabled):
+            # Check if the user has logged in from this IP address before
+            # If yes, then no need for 2fa
+            tfa_verified = check_ipaddr(get_ipaddr(), username)
 
         refresh_token = create_refresh_token(identity=username)
-        access_token = generate_access_token(username, tfa_enabled=tfa_enabled, tfa_verified=tfa_verified)
+        access_token = generate_access_token(username, acc_verified=acc_verified,
+                                tfa_enabled=tfa_enabled, tfa_verified=tfa_verified)
+        
         # Generate the response using the user's details
-        user = db.get_user_detail(username)
-        res = make_response(make_identity_response("Login Sucessfull", user[0], user[1], tfa_enabled), 200)
+        res = make_response(make_identity_response("Login Sucessfull", user), 200)
         set_access_cookies(res, access_token)
         set_refresh_cookies(res, refresh_token)
         return res, 200
@@ -237,12 +232,25 @@ class User(Resource):
         qr_img.save(buffer)
         buffer.seek(0)
 
-        db.register_ipaddress(username, get_ipaddr())
+        db.set_user_tfa_enable(username)
 
         # Generate a new access token with 2fa enabled
         res = send_file(buffer, mimetype='image/png')
         access_token = generate_access_token(username, tfa_enabled=True, tfa_verified=False)
         set_access_cookies(res, access_token)
+        return res
+    
+    @app.route('/2faGet', methods=['GET'], endpoint='get_2fa')
+    @two_fa_required # Only allow access if 2fa is enabled
+    def get_tfa():
+        username = get_jwt_identity()
+        secret = db.get_2fa_secret(username)
+        qr_img = twofa.get_qr(username, secret)
+        buffer = BytesIO()
+        qr_img.save(buffer)
+        buffer.seek(0)
+
+        res = send_file(buffer, mimetype='image/png')
         return res
     
     @app.route('/2faVerify', methods=['POST'], endpoint='verify_2fa')
@@ -253,6 +261,7 @@ class User(Resource):
         secret = db.get_2fa_secret(username) # TODO implement this
         token = request.json['token']
         if twofa.verify(secret, token):
+            db.register_ipaddress(username, get_ipaddr())
             access_token = generate_access_token(username, tfa_enabled=True, tfa_verified=True)
             res = make_response(jsonify({"msg":"2FA verified"}), 200)
             set_access_cookies(res, access_token)

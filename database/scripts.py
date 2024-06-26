@@ -12,8 +12,8 @@ get_userid_script = '''
     FROM person p
     WHERE p.username = \"{}\";
 '''
-get_user_detail_script = '''
-    SELECT p.username, p.email
+get_user = '''
+    SELECT *
     FROM person p
     WHERE p.userid = \"{}\";
 '''
@@ -35,6 +35,18 @@ get_ipaddress_script = '''
     SELECT i.ipaddress
     FROM ipaddress i
     WHERE i.userid = \"{}\";
+'''
+
+# ---------- USER STATUS MANAGEMENT ----------
+update_user_acc_verified_script = '''
+    UPDATE person
+    SET acc_verified = 1
+    WHERE userid = \"{}\";
+'''
+update_user_tfa_enabled_script = '''
+    UPDATE person
+    SET tfa_enabled = 1
+    WHERE userid = \"{}\";
 '''
 # ---------- 2FA MANAGEMENT ----------
 get_2fa_secret_script = '''
@@ -74,7 +86,10 @@ create_table_script = '''
     CREATE TABLE IF NOT EXISTS person(
         userid INTEGER PRIMARY KEY,
         username VARCHAR(50) NOT NULL UNIQUE,
-        email VARCHAR(255) NOT NULL);
+        email VARCHAR(255) NOT NULL,
+        acc_verified BOOLEAN NOT NULL DEFAULT 0, 
+        tfa_enabled BOOLEAN NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS login(
         userid INT NOT NULL PRIMARY KEY, 
         hashpwd VARCHAR(255) NOT NULL, 

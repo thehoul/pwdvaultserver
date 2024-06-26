@@ -22,12 +22,12 @@ class DbManager:
     
     # --- USER MANAGEMENT ---
 
-    # Get the details of a user. Returns (username, email) if the user was found, None if the user was not found
-    def get_user_detail(self, username):
+    # Get the details of a user
+    def get_user(self, username):
         userid = self.getUserID(username)
         if not userid:
             return None
-        res = self.cursor.execute(get_user_detail_script.format(userid))
+        res = self.cursor.execute(get_user.format(userid))
         return res.fetchone()
 
     # Returns the hash of the password and the salt -> (hash, salt)
@@ -68,7 +68,29 @@ class DbManager:
         except sqlite3.IntegrityError:
             self.message = 'User not found'
             return False
-        
+
+    # --- USER STATUS MANAGEMENT ---    
+    
+    # Set the user account as verified
+    def set_user_acc_verified(self, username):
+        userid = self.getUserID(username)
+        if not userid:
+            return False
+        self.cursor.execute(
+            update_user_acc_verified_script.format(userid))
+        self.commit()
+        return True
+    
+    # Set the user 2fa has enabled
+    def set_user_tfa_enable(self, username):
+        userid = self.getUserID(username)
+        if not userid:
+            return False
+        self.cursor.execute(
+            update_user_tfa_enabled_script.format(userid))
+        self.commit()
+        return True
+    
     # --- PASSWORD MANAGEMENT ---
 
     # Add a password to the vault. Returns True if the password was added, False if the user was not found

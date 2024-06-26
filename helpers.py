@@ -1,10 +1,11 @@
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt, get_jwt_identity
 from flask import request, jsonify
 from functools import wraps
 
-def generate_access_token(username, tfa_enabled=False, tfa_verified=False):
+def generate_access_token(username, acc_verified=False, tfa_enabled=False, tfa_verified=False):
     access_token = create_access_token(identity=username, 
         additional_claims={
+            "acc_verified": acc_verified,
             "tfa_enabled": tfa_enabled,
             "tfa_verified": tfa_verified
         }
@@ -25,14 +26,19 @@ def get_ipaddr():
     ipaddr = request.access_route[-1]
     return ipaddr
 
-def make_identity_response(message, username, email, tfa_enabled):
+def make_identity_response(message, user):
     return jsonify({
         "msg":message,
-        "username":username, 
-        "email": email,
-        "tfa_enabled": tfa_enabled  
+        "username":user[1], 
+        "email": user[2],
+        "acc_verified": user[3],
+        "tfa_enabled": user[4],
+        "created_at": user[5]  
     })
 
+# TODO add function to require account to be verified
+
+# TODO add requirement for the account to be verified (i.e. tfa enabled implies account verified)
 # Check that the user has enabled 2fa /!\ NOT THAT IT HAS BEEN VERIFIED
 def two_fa_required(fn):
     @wraps(fn)
