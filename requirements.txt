@@ -7,3 +7,4 @@ flask-jwt-extended
 gunicorn
 pyotp
 qrcode
+Flask-DotEnv

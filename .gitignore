@@ -2,3 +2,4 @@ authpwd.txt
 cert.pem
 key.pem
 *.db
+.env
