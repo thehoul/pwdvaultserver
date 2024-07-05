@@ -29,7 +29,7 @@ def set_flask(app):
     app.config["MAIL_SALT"] = environ.get('MAIL_SALT')
 
     # Root URL
-    if(app.config['FLASK_ENV'] == 'development'):
+    if(environ.get('FLASK_ENV') == 'development'):
         app.config['ROOT_URL'] = 'http://127.0.0.1:5000'
     else:   
         app.config['ROOT_URL'] = 'https://pi.thehoul.ch'
