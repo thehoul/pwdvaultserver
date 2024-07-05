@@ -117,6 +117,8 @@ class Passwords(Resource):
 
         try:
             pwd = user.get_website_password(args['website'])
+            if not pwd:
+                return jsonify({"msg":f"No password for {args['website']}"}), 404
             db.session.delete(pwd)
             db.session.commit()
             return jsonify({"msg":"Password deleted"}), 200
@@ -151,10 +153,11 @@ class Users(Resource):
 
     def login(username, password):
         user = get_user(username)
+        if not user:
+            return jsonify({"msg":"Invalid username or password"}), 401
         if not Authenticator.check_auth(password, user.login.hashpwd, user.login.salt):
             return jsonify({"msg":"Invalid username or password"}), 401
         
-        user = get_user(username)
         acc_verified = user.verified
         tfa_enabled = user.tfa_enabled
         tfa_verified = False
@@ -239,7 +242,7 @@ class Users(Resource):
             db.session.commit()
             return jsonify({"msg":"User deleted"}), 200
         except Exception as e:
-            return jsonify({"msg":e}), 404
+            return jsonify({"msg":repr(e)}), 404
         
     @app.route('/2faActivate', methods=['GET'], endpoint='activate_2fa')
     # No need to check the IP address 
