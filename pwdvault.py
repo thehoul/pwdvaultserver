@@ -25,21 +25,13 @@ from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import set_access_cookies
 from flask_jwt_extended import get_jwt
 from flask_jwt_extended import set_refresh_cookies, unset_jwt_cookies
+from config import set_flask
 
 from models import db, User, Vault, Login, IpAddress
 
 app = Flask(__name__)
 
-with open('authpwd.txt', 'r') as f:
-    app.config["JWT_SECRET_KEY"] = f.read().strip()
-
-app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
-
-app.config["JWT_COOKIE_CSRF_PROTECT"] = False
-app.config["JWT_COOKIE_SECURE"] = True
-app.config["JWT_COOKIE_SAMESITE"] = "None"
-
-app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///pwdvault.db'
+set_flask(app)
 
 db.init_app(app)
 with app.app_context():
