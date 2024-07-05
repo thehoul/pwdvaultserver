@@ -59,6 +59,9 @@ def two_fa_complete(fn):
         claims = get_jwt()
         if not claims.get("tfa_verified"):
             return jsonify({'message': '2FA not verified'}), 403
+        user = get_user(get_jwt_identity())
+        if not user.twofa:
+            return jsonify({'message': '2FA not enabled'}), 403
         return fn(*args, **kwargs)
     return wrapper
 

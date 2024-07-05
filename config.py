@@ -6,7 +6,7 @@ def set_flask(app):
 
     # App config
     app.config['FLASK_APP'] = 'PwdVault App'
-    app.config['FLASK_ENV'] = 'development'
+    app.config['FLASK_ENV'] = environ.get('FLASK_ENV')
 
     # JWT config
     app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
@@ -30,7 +30,7 @@ def set_flask(app):
 
     # Root URL
     if(app.config['FLASK_ENV'] == 'development'):
-        app.config['ROOT_URL'] = 'https://127.0.0.1:5000'
+        app.config['ROOT_URL'] = 'http://127.0.0.1:5000'
     else:   
         app.config['ROOT_URL'] = 'https://pi.thehoul.ch'
 

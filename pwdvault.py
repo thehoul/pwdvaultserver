@@ -27,7 +27,8 @@ from flask_jwt_extended import get_jwt
 from flask_jwt_extended import set_refresh_cookies, unset_jwt_cookies
 from config import set_flask
 
-from models import db, User, Vault, Login, IpAddress
+from mailman import MailMan
+from models import db, User, Vault, Login, IpAddress, TwoFa
 
 app = Flask(__name__)
 
@@ -36,6 +37,8 @@ set_flask(app)
 db.init_app(app)
 with app.app_context():
     db.create_all()
+
+mailman = MailMan(app)
 twofa = TwoFAManager("pwdvaultapp")
 
 jwt = JWTManager(app)
@@ -87,7 +90,7 @@ class Passwords(Resource):
         if pwd:
             return jsonify({"accepted": True, "password":pwd.password}), 200
         else:
-            return jsonify({"accepted": False, "msg":db.message}), 200
+            return jsonify({"accepted": False, "msg":f"No password for {website}"}), 200
     
     @app.route('/setPassword', methods=['POST'], endpoint='add_password')
     @token_ip_required()
@@ -184,6 +187,7 @@ class Users(Resource):
             new_user.login = Login(hashpwd=hashpwd, salt=salt)
             new_user.ipaddresses.append(IpAddress(ipaddress=get_ipaddr()))
             db.session.commit()
+            mailman.send_account_verification_email(new_user.username, new_user.email)
             return jsonify({"msg":"User created"}), 200
         except exc.IntegrityError as e:
             return jsonify({"msg":"User already exists"}), 200
@@ -196,6 +200,31 @@ class Users(Resource):
         # Parse the password from the request
         args = Users.name_pwd_parser.parse_args()
         return Users.login(args['username'], args['password'])
+    
+    # Verify a user's account
+    @app.route('/verifyAccount', methods=['GET'], endpoint='verify_account')
+    def verify():
+        token = request.args.get('token')
+        email = mailman.confirm_token(token)
+        if not email:
+            return jsonify({"msg":"Invalid or expired token"}), 401
+        
+        user = User.query.filter_by(email=email).first()
+        user.verified = True
+        db.session.commit()
+        return jsonify({"msg":"Account verified"}), 200
+    
+    # Resend the verification email
+    @app.route('/resendVerification', methods=['GET'], endpoint='resend_verification')
+    @token_ip_required()
+    def resend():
+        user = get_user(get_jwt_identity())
+        if not user:
+            return jsonify({"msg":"User not found"}), 404
+        if user.verified:
+            return jsonify({"msg":"Account already verified"}), 200
+        mailman.send_account_verification_email(user.username, user.email)
+        return jsonify({"msg":"Verification email sent"}), 200
 
         
     # Delete a user
@@ -219,13 +248,17 @@ class Users(Resource):
     def tfa_setup():
         username = get_jwt_identity()
         user = get_user(username)
-        twofa.setup_twofa(user)
 
         # Create the QR code
-        qr_img =  twofa.get_qr(username, user.twofa.secret)
+        secret = twofa.generate_secret()
+        qr_img =  twofa.get_qr(username, secret)
         buffer = BytesIO()
         qr_img.save(buffer)
         buffer.seek(0)
+
+        user.tfa_enabled = True
+        user.twofa = TwoFa(secret=secret)
+        db.session.commit()
 
         # Generate a new access token with 2fa enabled
         res = send_file(buffer, mimetype='image/png')
@@ -262,4 +295,4 @@ class Users(Resource):
             return jsonify({"msg":"2FA failed"}), 401
 
 if __name__ == "__main__":
-    app.run(debug=True, ssl_context=('cert.pem', 'key.pem'))
+    app.run(debug=True)
