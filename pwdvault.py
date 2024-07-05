@@ -11,20 +11,22 @@ from helpers import *
 from io import BytesIO
 
 from authentication.authenticate import Authenticator
-from database.dbmanager import DbManager
 from twofa import TwoFAManager
 
 from flask import Flask, make_response
 from flask_restful import Resource, reqparse
 from flask import jsonify, request
 from flask import send_file
+from sqlalchemy import exc
 
 from flask_jwt_extended import JWTManager
 
 from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import set_access_cookies
-from flask_jwt_extended import get_jwt, verify_jwt_in_request
+from flask_jwt_extended import get_jwt
 from flask_jwt_extended import set_refresh_cookies, unset_jwt_cookies
+
+from models import db, User, Vault, Login, IpAddress
 
 app = Flask(__name__)
 
@@ -37,38 +39,19 @@ app.config["JWT_COOKIE_CSRF_PROTECT"] = False
 app.config["JWT_COOKIE_SECURE"] = True
 app.config["JWT_COOKIE_SAMESITE"] = "None"
 
-db = DbManager()
-auth = Authenticator(db)
+app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///pwdvault.db'
+
+db.init_app(app)
+with app.app_context():
+    db.create_all()
 twofa = TwoFAManager("pwdvaultapp")
 
 jwt = JWTManager(app)
 
-def check_ipaddr(ipaddr, username):
-    ipaddresses = db.get_ipaddresses(username)
-    for ip in ipaddresses:
-        if ipaddr == ip[0]:
-            return True
-    return False
-
-def token_ip_required():
-    def wrapper(fn):
-        @wraps(fn)
-        def decorator(*args, **kwargs):
-            verify_jwt_in_request()
-            ipaddr = get_ipaddr()
-            username = get_jwt_identity()
-            if check_ipaddr(ipaddr, username):
-                return fn(*args, **kwargs)
-            else:
-                return jsonify({"msg":"Unknown IP address"}), 401
-
-        return decorator
-    return wrapper
-
 @app.route('/checkAuth', methods=['GET'], endpoint='check_if_authed')
 @token_ip_required() # Only need to have any valid token
 def check_if_auth():
-    user = db.get_user(get_jwt_identity())
+    user = get_user(get_jwt_identity())
     if user:
         return make_identity_response("You are authenticated", user), 200
 
@@ -107,10 +90,10 @@ class Passwords(Resource):
     @token_ip_required()
     @two_fa_complete # Only allow access if 2fa is enabled and verified
     def get(website):
-        username = get_jwt_identity()
-        pwd = db.get_password(username, website)
+        user = get_user(get_jwt_identity())
+        pwd = user.get_website_password(website)
         if pwd:
-            return jsonify({"accepted": True, "password":pwd}), 200
+            return jsonify({"accepted": True, "password":pwd.password}), 200
         else:
             return jsonify({"accepted": False, "msg":db.message}), 200
     
@@ -118,16 +101,16 @@ class Passwords(Resource):
     @token_ip_required()
     @two_fa_complete # Only allow access if 2fa is enabled and verified
     def post():
-        username = get_jwt_identity()
+        user = get_user(get_jwt_identity())
         args = Passwords.website_password_parser.parse_args()
 
-        if db.add_password(username, args['website'], args['password']):
+        entry = Vault(website=args['website'], password=args['password'])
+        try:
+            user.passwords.append(entry)
+            db.session.commit()
             return jsonify({"accepted": True, "msg":"Password added"}), 200
-        else:
-            return jsonify({"accepted": False, "msg":db.message}), 200
-        
-
-        return db.add_password(username, args['website'], args['password'])
+        except Exception as e:
+            return jsonify({"accepted": False, "msg":e}), 200
     
     @app.route('/deletePassword', methods=['DELETE'], endpoint='delete_password')
     @token_ip_required()
@@ -135,11 +118,15 @@ class Passwords(Resource):
     def delete():
         username = get_jwt_identity()
         args = Passwords.website_parser.parse_args()
+        user = get_user(username)
 
-        if db.delete_password(username, args['website']):
+        try:
+            pwd = user.get_website_password(args['website'])
+            db.session.delete(pwd)
+            db.session.commit()
             return jsonify({"msg":"Password deleted"}), 200
-        else:
-            return jsonify({"msg":db.message}), 404
+        except Exception as e:
+            return jsonify({"msg":e}), 404
         
     @app.route('/updatePassword', methods=['PUT'], endpoint='update_password')
     @token_ip_required()
@@ -147,14 +134,18 @@ class Passwords(Resource):
     def put():
         username = get_jwt_identity()
         args = Passwords.website_password_parser.parse_args()
+        user = get_user(username)
 
-        if db.update_password(username, args['website'], args['password']):
-            return jsonify({"accepted": True, "msg":"Password updated"}), 200
-        else:
-            return jsonify({"accepted": False, "msg":db.message}), 200
+        try:
+            pwd = user.get_website_password(args['website'])
+            pwd.password = args['password']
+            db.session.commit()
+            return jsonify({"msg":"Password updated"}), 200
+        except Exception as e:
+            return jsonify({"msg":e}), 404
 
 # Endpoints for user management
-class User(Resource):
+class Users(Resource):
 
     name_pwd_parser = reqparse.RequestParser()
     name_pwd_parser.add_argument('username', required=True, help="Username cannot be blank")
@@ -164,18 +155,19 @@ class User(Resource):
     full_Parser.add_argument('email', required=True, help="Email cannot be blank")
 
     def login(username, password):
-        if not auth.authenticate(username, password):
+        user = get_user(username)
+        if not Authenticator.check_auth(password, user.login.hashpwd, user.login.salt):
             return jsonify({"msg":"Invalid username or password"}), 401
         
-        user = db.get_user(username)
-        acc_verified = user[3]
-        tfa_enabled = user[4]
+        user = get_user(username)
+        acc_verified = user.verified
+        tfa_enabled = user.tfa_enabled
         tfa_verified = False
         
         if(tfa_enabled):
             # Check if the user has logged in from this IP address before
             # If yes, then no need for 2fa
-            tfa_verified = check_ipaddr(get_ipaddr(), username)
+            tfa_verified = user.check_ipaddress(get_ipaddr())
 
         refresh_token = create_refresh_token(identity=username)
         access_token = generate_access_token(username, acc_verified=acc_verified,
@@ -191,22 +183,27 @@ class User(Resource):
     @app.route('/createUser', methods=['PUT'], endpoint='register_user')
     def put():
         # Parse the password from the request
-        args = User.full_Parser.parse_args()
+        args = Users.full_Parser.parse_args()
 
-        # Try to add the user to the auth database
-        if auth.register(args['username'], args['email'], args['password']):
-            db.register_ipaddress(args['username'], get_ipaddr())
-            return User.login(args['username'], args['password'])
-        else:   
-            return jsonify({"msg":db.message}), 200
+        try:
+            new_user  = User(username=args['username'], email=args['email'])
+            (hashpwd, salt) = Authenticator.create_auth(args['password'])
+            db.session.add(new_user)
+            new_user.login = Login(hashpwd=hashpwd, salt=salt)
+            new_user.ipaddresses.append(IpAddress(ipaddress=get_ipaddr()))
+            db.session.commit()
+            return jsonify({"msg":"User created"}), 200
+        except exc.IntegrityError as e:
+            return jsonify({"msg":"User already exists"}), 200
+        except Exception as e:
+            return jsonify({"msg":repr(e)}), 404
         
     # Login a user
     @app.route('/login', methods=['POST'], endpoint='login_user')
     def get():
         # Parse the password from the request
-        args = User.name_pwd_parser.parse_args()
-
-        return User.login(args['username'], args['password'])
+        args = Users.name_pwd_parser.parse_args()
+        return Users.login(args['username'], args['password'])
 
         
     # Delete a user
@@ -215,24 +212,28 @@ class User(Resource):
     @two_fa_complete # Only allow access if 2fa is enabled and verified
     def delete():
         username = get_jwt_identity()        
-        if auth.unregister(username):
-            return jsonify({"msg":"User removed"}), 200
-        else:
-            return jsonify({"msg":"User not found"}), 404
+        user = get_user(username)
+        try:
+            db.session.delete(user)
+            db.session.commit()
+            return jsonify({"msg":"User deleted"}), 200
+        except Exception as e:
+            return jsonify({"msg":e}), 404
         
     @app.route('/2faActivate', methods=['GET'], endpoint='activate_2fa')
     # No need to check the IP address 
     @two_fa_not_setup # Only allow access if 2fa is not enabled
+    @acc_verified_required() # Only allow access if the account is verified
     def tfa_setup():
         username = get_jwt_identity()
-        secret = twofa.generate_secret()
-        db.register_2fa(username, secret)
-        qr_img =  twofa.get_qr(username, secret)
+        user = get_user(username)
+        twofa.setup_twofa(user)
+
+        # Create the QR code
+        qr_img =  twofa.get_qr(username, user.twofa.secret)
         buffer = BytesIO()
         qr_img.save(buffer)
         buffer.seek(0)
-
-        db.set_user_tfa_enable(username)
 
         # Generate a new access token with 2fa enabled
         res = send_file(buffer, mimetype='image/png')
@@ -242,10 +243,10 @@ class User(Resource):
     
     @app.route('/2faGet', methods=['GET'], endpoint='get_2fa')
     @two_fa_required # Only allow access if 2fa is enabled
+    @acc_verified_required()
     def get_tfa():
-        username = get_jwt_identity()
-        secret = db.get_2fa_secret(username)
-        qr_img = twofa.get_qr(username, secret)
+        user = get_user(get_jwt_identity())
+        qr_img = twofa.get_qr(user.username, user.twofa.secret)
         buffer = BytesIO()
         qr_img.save(buffer)
         buffer.seek(0)
@@ -257,12 +258,11 @@ class User(Resource):
     @token_ip_required()
     @two_fa_required # Only allow access if 2fa is enabled
     def tfa_verify():
-        username = get_jwt_identity()
-        secret = db.get_2fa_secret(username) # TODO implement this
+        user = get_user(get_jwt_identity())
         token = request.json['token']
-        if twofa.verify(secret, token):
-            db.register_ipaddress(username, get_ipaddr())
-            access_token = generate_access_token(username, tfa_enabled=True, tfa_verified=True)
+        if twofa.verify(user.twofa.secret, token):
+            user.ipaddresses.append(IpAddress(ipaddress=get_ipaddr()))
+            access_token = generate_access_token(user.username, tfa_enabled=True, tfa_verified=True)
             res = make_response(jsonify({"msg":"2FA verified"}), 200)
             set_access_cookies(res, access_token)
             return res

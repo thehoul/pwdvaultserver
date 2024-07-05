@@ -1,6 +1,7 @@
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt, get_jwt_identity
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt, get_jwt_identity, verify_jwt_in_request
 from flask import request, jsonify
 from functools import wraps
+from models import User
 
 def generate_access_token(username, acc_verified=False, tfa_enabled=False, tfa_verified=False):
     access_token = create_access_token(identity=username, 
@@ -29,11 +30,11 @@ def get_ipaddr():
 def make_identity_response(message, user):
     return jsonify({
         "msg":message,
-        "username":user[1], 
-        "email": user[2],
-        "acc_verified": user[3],
-        "tfa_enabled": user[4],
-        "created_at": user[5]  
+        "username":user.username, 
+        "email": user.email,
+        "acc_verified": user.verified,
+        "tfa_enabled": user.tfa_enabled,
+        "created_at": user.created  
     })
 
 # TODO add function to require account to be verified
@@ -70,3 +71,33 @@ def two_fa_not_setup(fn):
             return jsonify({'message': '2FA already setup'}), 403
         return fn(*args, **kwargs)
     return wrapper
+
+def acc_verified_required():
+    def wrapper(fn):
+        @wraps(fn)
+        def decorator(*args, **kwargs):
+            verify_jwt_in_request()
+            user = get_user(get_jwt_identity())
+            if user.verified:
+                return fn(*args, **kwargs)
+            else:
+                return jsonify({"msg":"Account not verified"}), 401
+        return decorator
+    return wrapper
+
+def token_ip_required():
+    def wrapper(fn):
+        @wraps(fn)
+        def decorator(*args, **kwargs):
+            verify_jwt_in_request()
+            ipaddr = get_ipaddr()
+            user = get_user(get_jwt_identity())
+            if user.check_ipaddress(ipaddr):
+                return fn(*args, **kwargs)
+            else:
+                return jsonify({"msg":"Unknown IP address"}), 401
+        return decorator
+    return wrapper
+
+def get_user(username):
+    return User.query.filter_by(username=username).first()
