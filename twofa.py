@@ -1,5 +1,6 @@
 import pyotp
 import qrcode
+from models import TwoFa
 
 class TwoFAManager:
 
@@ -27,3 +28,13 @@ class TwoFAManager:
     def verify(self, secret, token):
         totp = pyotp.TOTP(secret)
         return totp.verify(token)
+    
+    def setup_twofa(self, user):
+        if user.tfa_enabled and user.twofa:
+            # Already setup
+            return
+        
+        secret = self.generate_secret()
+        user.twofa = TwoFa(secret=secret)
+        user.tfa_enabled = True
+        

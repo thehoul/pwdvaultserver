@@ -1,1 +1,0 @@
-db_file_loc = 'database/database.db'
