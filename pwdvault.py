@@ -4,8 +4,6 @@ from datetime import timezone
 
 from flask_jwt_extended import create_refresh_token
 
-from functools import wraps
-
 from helpers import *
 
 from io import BytesIO
@@ -43,6 +41,7 @@ twofa = TwoFAManager("pwdvaultapp")
 
 jwt = JWTManager(app)
 
+# Refresh the access token if it is about to expire
 @app.after_request
 def refresh(res):
     try:
@@ -52,7 +51,7 @@ def refresh(res):
         target = datetime.timestamp(now + timedelta(minutes=5))
         if target > exp:
             current_user = get_jwt_identity()
-            access_token = refresh_access_token(current_user, get_jwt())
+            access_token = refresh_access_token(current_user)
             set_access_cookies(res, access_token)
         return res
     except (RuntimeError, KeyError):
@@ -85,7 +84,6 @@ class Passwords(Resource):
 
     @app.route('/getPassword/<string:website>', methods=['GET'], endpoint='get_password')
     @token_ip_required()
-    @two_fa_complete # Only allow access if 2fa is enabled and verified
     def get(website):
         user = get_user(get_jwt_identity())
         pwd = user.get_website_password(website)
@@ -96,7 +94,6 @@ class Passwords(Resource):
     
     @app.route('/setPassword', methods=['POST'], endpoint='add_password')
     @token_ip_required()
-    @two_fa_complete # Only allow access if 2fa is enabled and verified
     def post():
         user = get_user(get_jwt_identity())
         args = Passwords.website_password_parser.parse_args()
@@ -111,7 +108,6 @@ class Passwords(Resource):
     
     @app.route('/deletePassword', methods=['DELETE'], endpoint='delete_password')
     @token_ip_required()
-    @two_fa_complete # Only allow access if 2fa is enabled and verified
     def delete():
         username = get_jwt_identity()
         args = Passwords.website_parser.parse_args()
@@ -129,7 +125,6 @@ class Passwords(Resource):
         
     @app.route('/updatePassword', methods=['PUT'], endpoint='update_password')
     @token_ip_required()
-    @two_fa_complete # Only allow access if 2fa is enabled and verified
     def put():
         username = get_jwt_identity()
         args = Passwords.website_password_parser.parse_args()
@@ -160,19 +155,9 @@ class Users(Resource):
             return jsonify({"msg":"Invalid username or password"}), 401
         if not Authenticator.check_auth(password, user.login.hashpwd, user.login.salt):
             return jsonify({"msg":"Invalid username or password"}), 401
-        
-        acc_verified = user.verified
-        tfa_enabled = user.tfa_enabled
-        tfa_verified = False
-        
-        if(tfa_enabled):
-            # Check if the user has logged in from this IP address before
-            # If yes, then no need for 2fa
-            tfa_verified = user.check_ipaddress(get_ipaddr())
 
         refresh_token = create_refresh_token(identity=username)
-        access_token = generate_access_token(username, acc_verified=acc_verified,
-                                tfa_enabled=tfa_enabled, tfa_verified=tfa_verified)
+        access_token = create_access_token(username=username)
         
         # Generate the response using the user's details
         res = make_response(make_identity_response("Login Sucessfull", user), 200)
@@ -237,7 +222,6 @@ class Users(Resource):
     # Send a password reset email
     @app.route('/sendResetPassword', methods=['GET'], endpoint='send_reset_password')
     @token_ip_required()
-    @two_fa_complete # Only allow access if 2fa is enabled and verified
     def send_pwd_reset():
         user = get_user(get_jwt_identity())
         mailman.send_password_reset_email(user.email)
@@ -287,7 +271,7 @@ class Users(Resource):
 
         # Generate a new access token with 2fa enabled
         res = send_file(buffer, mimetype='image/png')
-        access_token = generate_access_token(username, tfa_enabled=True, tfa_verified=False)
+        access_token = create_access_token(username=username)
         set_access_cookies(res, access_token)
         return res
     
@@ -316,7 +300,7 @@ class Users(Resource):
         token = request.json['token']
         if twofa.verify(user.twofa.secret, token):
             user.ipaddresses.append(IpAddress(ipaddress=get_ipaddr()))
-            access_token = generate_access_token(user.username, tfa_enabled=True, tfa_verified=True)
+            access_token = create_access_token(username=user.username)
             res = make_response(jsonify({"msg":"2FA verified"}), 200)
             set_access_cookies(res, access_token)
             return res
@@ -326,7 +310,6 @@ class Users(Resource):
     # Delete a user
     @app.route('/deleteUser', methods=['DELETE'], endpoint='delete_user')
     @token_ip_required()
-    @two_fa_complete # Only allow access if 2fa is enabled and verified
     def delete():
         username = get_jwt_identity()        
         user = get_user(username)
