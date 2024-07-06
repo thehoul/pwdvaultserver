@@ -43,13 +43,6 @@ twofa = TwoFAManager("pwdvaultapp")
 
 jwt = JWTManager(app)
 
-@app.route('/checkAuth', methods=['GET'], endpoint='check_if_authed')
-@token_ip_required() # Only need to have any valid token
-def check_if_auth():
-    user = get_user(get_jwt_identity())
-    if user:
-        return make_identity_response("You are authenticated", user), 200
-
 @app.after_request
 def refresh(res):
     try:
@@ -64,6 +57,15 @@ def refresh(res):
         return res
     except (RuntimeError, KeyError):
         return res
+
+@app.route('/checkAuth', methods=['GET'], endpoint='check_if_authed')
+@token_ip_required() # Only need to have any valid token
+def check_if_auth():
+    user = get_user(get_jwt_identity())
+    if user:
+        return make_identity_response("You are authenticated", user), 200
+    else:
+        return jsonify({"msg":"User not found"}), 404
 
 @app.route('/logout', methods=['POST'], endpoint='logout_user')
 @token_ip_required() # Only need to have any valid token
@@ -151,6 +153,7 @@ class Users(Resource):
     full_Parser = name_pwd_parser.copy()
     full_Parser.add_argument('email', required=True, help="Email cannot be blank")
 
+    # Login a user
     def login(username, password):
         user = get_user(username)
         if not user:
@@ -240,12 +243,14 @@ class Users(Resource):
         mailman.send_password_reset_email(user.email)
         return jsonify({"msg":"Password reset email sent"}), 200
     
+    # Get the reset password page
     @app.route('/getResetPassword', methods=['GET'], endpoint='get_reset_password')
     def get_pwd_reset():
         token = request.args.get('token')
         link = f"{app.config['ROOT_URL']}/resetPassword?token={token}"
         return render_template('reset_pwd_page.html', link=link)
     
+    # Reset the password of a user 
     @app.route('/resetPassword', methods=['POST'], endpoint='reset_password')
     def reset_pwd():
         token = request.args.get('token')
@@ -260,20 +265,7 @@ class Users(Resource):
         db.session.commit()
         return jsonify({"msg":"Password reset"}), 200
         
-    # Delete a user
-    @app.route('/deleteUser', methods=['DELETE'], endpoint='delete_user')
-    @token_ip_required()
-    @two_fa_complete # Only allow access if 2fa is enabled and verified
-    def delete():
-        username = get_jwt_identity()        
-        user = get_user(username)
-        try:
-            db.session.delete(user)
-            db.session.commit()
-            return jsonify({"msg":"User deleted"}), 200
-        except Exception as e:
-            return jsonify({"msg":repr(e)}), 404
-        
+    # Enable 2fa and get the QR code
     @app.route('/2faActivate', methods=['GET'], endpoint='activate_2fa')
     # No need to check the IP address 
     @two_fa_not_setup # Only allow access if 2fa is not enabled
@@ -299,6 +291,7 @@ class Users(Resource):
         set_access_cookies(res, access_token)
         return res
     
+    # Get the QR code for 2fa
     @app.route('/2faGet', methods=['GET'], endpoint='get_2fa')
     @two_fa_required # Only allow access if 2fa is enabled
     @acc_verified_required()
@@ -312,11 +305,14 @@ class Users(Resource):
         res = send_file(buffer, mimetype='image/png')
         return res
     
+    # Verify the 2fa token
     @app.route('/2faVerify', methods=['POST'], endpoint='verify_2fa')
     @token_ip_required()
     @two_fa_required # Only allow access if 2fa is enabled
     def tfa_verify():
         user = get_user(get_jwt_identity())
+        if not user:
+            return jsonify({"msg":"User not found"}), 404
         token = request.json['token']
         if twofa.verify(user.twofa.secret, token):
             user.ipaddresses.append(IpAddress(ipaddress=get_ipaddr()))
@@ -327,5 +323,19 @@ class Users(Resource):
         else:
             return jsonify({"msg":"2FA failed"}), 401
 
+    # Delete a user
+    @app.route('/deleteUser', methods=['DELETE'], endpoint='delete_user')
+    @token_ip_required()
+    @two_fa_complete # Only allow access if 2fa is enabled and verified
+    def delete():
+        username = get_jwt_identity()        
+        user = get_user(username)
+        try:
+            db.session.delete(user)
+            db.session.commit()
+            return jsonify({"msg":"User deleted"}), 200
+        except Exception as e:
+            return jsonify({"msg":repr(e)}), 404
+        
 if __name__ == "__main__":
     app.run(debug=True)
