@@ -269,11 +269,7 @@ class Users(Resource):
         user.twofa = TwoFa(secret=secret)
         db.session.commit()
 
-        # Generate a new access token with 2fa enabled
-        res = send_file(buffer, mimetype='image/png')
-        access_token = create_access_token(username=username)
-        set_access_cookies(res, access_token)
-        return res
+        return send_file(buffer, mimetype='image/png')
     
     # Get the QR code for 2fa
     @app.route('/2faGet', methods=['GET'], endpoint='get_2fa')
@@ -299,11 +295,9 @@ class Users(Resource):
             return jsonify({"msg":"User not found"}), 404
         token = request.json['token']
         if twofa.verify(user.twofa.secret, token):
+            # Add the IP address to the user's list of verified IP addresses
             user.ipaddresses.append(IpAddress(ipaddress=get_ipaddr()))
-            access_token = create_access_token(username=user.username)
-            res = make_response(jsonify({"msg":"2FA verified"}), 200)
-            set_access_cookies(res, access_token)
-            return res
+            return make_response(jsonify({"msg":"2FA verified"}), 200)
         else:
             return jsonify({"msg":"2FA failed"}), 401
 
