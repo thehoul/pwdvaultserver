@@ -14,16 +14,17 @@ This is a server program using python Flask to create an API for a password vaul
 - POST `/resetPassword?token=xxx` : this is the endpoint used in the reset password page returned in the endpoint above. It sends as a form the new password and the token is the same as the one sent by mail initially.
 - GET `/2faActivate` : generate a secret key for the user's two-factor authentication and returns a QR code to scan. When this method is called, the user is considered to have enabled two-factor authentication.
 - GET `/2faGet` : resend the QR code for TwoFa. This requires that the user has enabled it first by calling the above endpoint.
-- POST `/2faVerify` : verify the TwoFa token given as json body using key `token`.
+- POST `/2faVerify` : verify the TwoFa token given as json body using key `token`. This essentially marks the sender Ip address as a valid IP address to use in the password method below.
 - DELETE `/deleteUser`: delete the user. This requires the cookie generated when logging in. This delete entirely the user, all saved passwords will be deleted.
 - GET `/checkAuth` : Useful endpoint to test if the current cookies are still fresh. It will return user information (username, mail, created date, if the account is vefified and if 2fa is enabled).
 - POST `/logout` : logout the user by remove the cookies.
 
 ## Passwords management
 
-- GET `/passwords/<username>/<website>`: return the list of passwords used by the user identified by the given username for the given website. This requires the cookie generated when logging in.
-- POST `passwords/<username>/<website>`: add to the given user and the given website an entry contaning the password given in the body using json and the key `password`. This requires the cookie generated when logging in.
-- DELETE `passwords/<username>/<website>`: delete for the user in the given website the password entry matching the password given in the body using json and the key `password`. This requires the cookie generate in when logging in. 
+- GET `/getPassword/<website>`: return the password registered for the current user for the given website. If a password exist, it is return in the JSON body and the `accepted` field is set to true. Otherwise the field is set to false and a `msg` is sent along.
+- POST `passwords/setPassword`: add to the current given user for the website and the password given in the body using json and the keys `website` and `password`. This requires the used IP address to have been verified using 2fa.
+- DELETE `passwords/deletePassword`: delete for the current user the password of the website given in the body using json and the key `websote`. This required the IP of the sender to have been verfied using 2fa. 
+- PUT `updatePassword` : modify the password of the current user to the new one given for the website given in the json body using keys `website` and `password`. This requires the IP addres of the sender to have been verified using 2fa
 
 # Development
 
