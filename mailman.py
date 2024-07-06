@@ -31,14 +31,14 @@ class MailMan:
     def send_account_verification_email(self, username, email):
         token = self.generate_token(email)
         link = f'{self.root}/verifyAccount?token={token}'
-        html = render_template('mail.html', username=username, link=link)
+        html = render_template('verify_account_mail.html', username=username, link=link)
         msg = Message('Account Verification', recipients=[email], html=html)
         mail.send(msg)
 
     def send_password_reset_email(self, email):
         token = self.generate_token(email)
         link = f'{self.root}/getResetPassword?token={token}'
-        html = render_template('change_pwd_mail.html', link=link)
+        html = render_template('reset_pwd_mail.html', link=link)
         msg = Message('Password Reset', recipients=[email], html=html)
         mail.send(msg)
 

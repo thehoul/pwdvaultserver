@@ -213,6 +213,8 @@ class Users(Resource):
             return jsonify({"msg":"Invalid or expired token"}), 401
         
         user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"msg":"User not found"}), 404
         user.verified = True
         db.session.commit()
         return jsonify({"msg":"Account verified"}), 200
