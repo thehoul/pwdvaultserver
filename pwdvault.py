@@ -13,7 +13,7 @@ from io import BytesIO
 from authentication.authenticate import Authenticator
 from twofa import TwoFAManager
 
-from flask import Flask, make_response
+from flask import Flask, make_response, render_template
 from flask_restful import Resource, reqparse
 from flask import jsonify, request
 from flask import send_file
@@ -213,6 +213,8 @@ class Users(Resource):
             return jsonify({"msg":"Invalid or expired token"}), 401
         
         user = User.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"msg":"User not found"}), 404
         user.verified = True
         db.session.commit()
         return jsonify({"msg":"Account verified"}), 200
@@ -229,6 +231,34 @@ class Users(Resource):
         mailman.send_account_verification_email(user.username, user.email)
         return jsonify({"msg":"Verification email sent"}), 200
 
+    # Send a password reset email
+    @app.route('/sendResetPassword', methods=['GET'], endpoint='send_reset_password')
+    @token_ip_required()
+    @two_fa_complete # Only allow access if 2fa is enabled and verified
+    def send_pwd_reset():
+        user = get_user(get_jwt_identity())
+        mailman.send_password_reset_email(user.email)
+        return jsonify({"msg":"Password reset email sent"}), 200
+    
+    @app.route('/getResetPassword', methods=['GET'], endpoint='get_reset_password')
+    def get_pwd_reset():
+        token = request.args.get('token')
+        link = f"{app.config['ROOT_URL']}/resetPassword?token={token}"
+        return render_template('reset_pwd_page.html', link=link)
+    
+    @app.route('/resetPassword', methods=['POST'], endpoint='reset_password')
+    def reset_pwd():
+        token = request.args.get('token')
+        password = request.form['new_password']
+        email = mailman.confirm_token(token)
+        if not email:
+            return jsonify({"msg":"Invalid or expired token"}), 401
+        user = User.query.filter_by(email=email).first()
+        (hashpwd, salt) = Authenticator.create_auth(password)
+        user.login.hashpwd = hashpwd
+        user.login.salt = salt
+        db.session.commit()
+        return jsonify({"msg":"Password reset"}), 200
         
     # Delete a user
     @app.route('/deleteUser', methods=['DELETE'], endpoint='delete_user')
